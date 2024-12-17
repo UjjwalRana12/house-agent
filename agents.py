@@ -14,9 +14,9 @@ load_dotenv()
 class HouseFeatures:
     beds: int = 3
     bath: float = 2.0
-    property_sqft: float = 1800.5
-    latitude: float = 40.71
-    longitude: float = -74.0
+    squarefeet: float = 1800.5  
+    latitude: float = 34.0522
+    longitude: float = -118.2437
 
 class LLMProcessorException(Exception):
    
@@ -24,7 +24,7 @@ class LLMProcessorException(Exception):
 
 class LLMProcessor:
     DEFAULT_MODEL = "mixtral-8x7b-32768"
-    REQUIRED_FEATURES = ['beds', 'bath', 'property_sqft', 'latitude', 'longitude']
+    REQUIRED_FEATURES = ['beds', 'bath', 'squarefeet', 'latitude', 'longitude'] 
 
     def __init__(self, model_path: str = "house_price_AI-test.pkl"):
         
@@ -46,18 +46,21 @@ class LLMProcessor:
             raise LLMProcessorException(f"Failed to load ML model: {str(e)}")
 
     def _create_system_prompt(self) -> str:
-        """Create the system prompt for feature extraction"""
+       
         return (
-            "You are a real estate assistant. Extract features from the user's input in the form of JSON. "
-            "Include the number of bedrooms as 'beds', the number of bathrooms as 'bath', "
-            "the property square footage as 'property_sqft', latitude as 'latitude', and longitude as 'longitude'. "
-            f"If any value is missing, use these defaults: {HouseFeatures()}. "
-            "Important: Return ONLY the JSON object with no additional text or notes."
+            "You are a real estate assistant. Extract features from the user's input and return ONLY a simple JSON object "
+            "with these exact keys and numeric values: 'beds', 'bath', 'squarefeet', 'latitude', 'longitude'. "  
+            "alway take 'latitude', 34.0522 and longitude -118.2437 no matter the location is "
+            "Example format: {'beds': 3, 'bath': 2.0, 'squarefeet': 1800.5, 'latitude': 34.0522, 'longitude': -118.2437}. "
+            "Do not include any additional text, notes, or escape characters."
         )
 
     def _extract_json_from_response(self, response: str) -> str:
-       
+        
         try:
+            
+            response = response.replace('\\', '')
+            
             
             start_idx = response.find('{')
             end_idx = response.rfind('}')
@@ -68,14 +71,33 @@ class LLMProcessor:
             json_str = response[start_idx:end_idx + 1]
             
             
-            json.loads(json_str) 
-            return json_str
+            json_str = ' '.join(json_str.split())
+            json_str = json_str.replace('\n', ' ').replace('\r', ' ')
+            
+            
+            parsed_json = json.loads(json_str)
+            if 'property_sqft' in parsed_json:
+                parsed_json['squarefeet'] = parsed_json.pop('property_sqft')
+            
+            
+            cleaned_json = {
+                'beds': float(parsed_json.get('beds', 3)),
+                'bath': float(parsed_json.get('bath', 2.0)),
+                'squarefeet': float(parsed_json.get('squarefeet', 1800.5)),
+                'latitude': float(parsed_json.get('latitude', 34.0522)),
+                'longitude': float(parsed_json.get('longitude', -118.2437))
+            }
+            
+            return json.dumps(cleaned_json)
             
         except json.JSONDecodeError as e:
+            print(f"Original response: {response}")
             raise LLMProcessorException(f"Failed to extract valid JSON: {str(e)}")
+        except Exception as e:
+            raise LLMProcessorException(f"Error processing JSON: {str(e)}")
 
     def _extract_features(self, content: str) -> Dict[str, float]:
-        
+       
         try:
             chat_completion = self.client.chat.completions.create(
                 messages=[
@@ -90,7 +112,6 @@ class LLMProcessor:
             llm_response = chat_completion.choices[0].message.content
             print(f"LLM Response: {llm_response}")
 
-           
             json_str = self._extract_json_from_response(llm_response)
             features = json.loads(json_str)
             
@@ -103,26 +124,20 @@ class LLMProcessor:
             
             return features
 
-        except json.JSONDecodeError as e:
-            raise LLMProcessorException(f"Invalid JSON from LLM: {str(e)}")
         except Exception as e:
             raise LLMProcessorException(f"Feature extraction failed: {str(e)}")
-
-    def _validate_features(self, features: Dict[str, float]) -> List[float]:
-        
-        default_features = HouseFeatures()
-        return [
-            float(features.get("beds", default_features.beds)),
-            float(features.get("bath", default_features.bath)),
-            float(features.get("property_sqft", default_features.property_sqft)),
-            float(features.get("latitude", default_features.latitude)),
-            float(features.get("longitude", default_features.longitude))
-        ]
 
     def predict_price(self, features: Dict[str, float]) -> float:
        
         try:
-            feature_values = self._validate_features(features)
+            feature_values = [
+                float(features.get("beds", HouseFeatures.beds)),
+                float(features.get("bath", HouseFeatures.bath)),
+                float(features.get("squarefeet", HouseFeatures.squarefeet)),
+                float(features.get("latitude", HouseFeatures.latitude)),
+                float(features.get("longitude", HouseFeatures.longitude))
+            ]
+            
             features_array = np.array(feature_values).reshape(1, -1)
             prediction = self.model.predict(features_array)[0]
             
@@ -143,16 +158,3 @@ class LLMProcessor:
             return f"Error: {str(e)}"
         except Exception as e:
             return "An unexpected error occurred while processing your request."
-
-def main():
-    
-    try:
-        processor = LLMProcessor()
-        test_input = "I have a house with 4 bedrooms, 3 bathrooms, and 2200 square feet in Los Angeles."
-        result = processor.process_with_llm(test_input)
-        print(result)
-    except Exception as e:
-        print(f"Critical error: {str(e)}")
-
-if __name__ == "__main__":
-    main()

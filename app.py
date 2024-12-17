@@ -11,13 +11,13 @@ load_dotenv()
 
 
 
-model = joblib.load("house_price_AI-test.pkl")
+model = joblib.load("house_price_AI-final-1.pkl")
 app = FastAPI()
 
 class HouseFeatures(BaseModel):
     beds: int
     bath: float
-    property_sqft: float
+    squarefeet: float
     latitude: float
     longitude: float
     
@@ -28,7 +28,7 @@ async def predict_price(features: HouseFeatures):
     feature_list = [
         features.beds,
         features.bath,
-        features.property_sqft,
+        features.squarefeet,
         features.latitude,
         features.longitude,
         

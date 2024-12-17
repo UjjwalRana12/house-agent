@@ -9,3 +9,6 @@ faiss-cpu
 transformers
 torch
 groq
+plotly 
+folium 
+streamlit-folium
