@@ -1,0 +1,11 @@
+streamlit
+gspread
+oauth2client
+pandas
+python-dotenv
+serpapi
+langchain
+faiss-cpu
+transformers
+torch
+groq
